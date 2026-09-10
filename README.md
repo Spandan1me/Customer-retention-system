@@ -17,18 +17,6 @@ A production-ready SaaS web application built for ISP Customer Retention Departm
 - **Export Engine**: 12 comprehensive reports exportable to CSV, Excel (`.xlsx`), and PDF (`.pdf`).
 - **Seeded Dataset**: Comes populated with 65 staff users (1 Admin, 2 Supervisors, 2 Team Leads, 60 Agents) and 500+ realistic churned customer profiles with complete call histories and verified recharges.
 
----
-
-## Seeded User Credentials (Password: `password123` / `admin123`)
-
-| Role | Username | Password | Scope / Capabilities |
-| :--- | :--- | :--- | :--- |
-| **Super Admin** | `admin` | `admin123` | Full org access, command center, import, export, audit trail |
-| **Supervisor 1** | `supervisor1` | `password123` | Team Lead 1 & 30 Agents performance overview |
-| **Team Lead 1** | `teamlead1` | `password123` | Real-time agent tracking table, coaching highlights |
-| **Retention Agent 1** | `agent1` | `password123` | Smart Work Queue, personal targets, call logging |
-
-*(Agents 1 through 60 are pre-configured: `agent1` to `agent60`)*
 
 ---
 
