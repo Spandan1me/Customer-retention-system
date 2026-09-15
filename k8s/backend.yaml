@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: retention
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: customer-retention-system-backend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secret
+                  key: DATABASE_URL
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secret
+                  key: SECRET_KEY
+            - name: DEBUG
+              value: "False"
+            - name: ALLOWED_HOSTS
+              value: "*"
+            - name: CORS_ALLOWED_ORIGINS
+              value: "http://3.109.95.106"
+            - name: CSRF_TRUSTED_ORIGINS
+              value: "http://3.109.95.106"
+          command:
+            - sh
+            - -c
+            - |
+              export DATABASE_URL="postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/retention_db"
+              python manage.py migrate
+              python manage.py collectstatic --noinput
+              exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120
+          readinessProbe:
+            exec:
+              command: ["python", "manage.py", "check"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["python", "manage.py", "check"]
+            initialDelaySeconds: 45
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: retention
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP
