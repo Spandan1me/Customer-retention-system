@@ -76,7 +76,19 @@ class SmartWorkQueueView(APIView):
         queryset = Customer.objects.filter(
             assigned_agent=user
         ).exclude(
-            customer_status__in=[CustomerStatus.RECHARGED, CustomerStatus.LOST, CustomerStatus.INVALID, CustomerStatus.CLOSED]
+            customer_status__in=[
+                CustomerStatus.RECHARGED,
+                CustomerStatus.LOST,
+                CustomerStatus.INVALID,
+                CustomerStatus.CLOSED
+            ]
+        ).filter(
+            Q(customer_status__in=[
+                CustomerStatus.NEW,
+                CustomerStatus.READY_TO_RECHARGE
+            ]) |
+            Q(next_followup_date__isnull=True) |
+            Q(next_followup_date__lte=today)
         ).select_related('latest_disposition')
 
         # Queue Sorting Priority:

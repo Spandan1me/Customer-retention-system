@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -50,11 +51,7 @@ class RetentionDisposition(models.Model):
 
 class NextActionChoice(models.TextChoices):
     CALL_AGAIN = 'CALL_AGAIN', 'Call Again'
-    VERIFY_RECHARGE = 'VERIFY_RECHARGE', 'Verify Recharge'
-    ESCALATE_SERVICE = 'ESCALATE_SERVICE', 'Escalate Service Issue'
-    SEND_OFFER = 'SEND_OFFER', 'Send Offer / Scheme'
-    CONTACT_DEALER = 'CONTACT_DEALER', 'Contact Dealer'
-    CLOSE_LOST = 'CLOSE_LOST', 'Close as Lost'
+    NO_CALL_NEEDED = 'NO_CALL_NEEDED', 'No Need to Call Again'
 
 class CustomerFollowUp(models.Model):
     customer = models.ForeignKey('customers.Customer', on_delete=models.CASCADE, related_name='followups')
@@ -69,9 +66,22 @@ class CustomerFollowUp(models.Model):
     previous_status = models.CharField(max_length=50)
     new_status = models.CharField(max_length=50)
     created_at = models.DateTimeField(auto_now_add=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='deleted_followups'
+    )
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['customer', '-created_at']),
+            models.Index(fields=['agent', 'call_date']),
+            models.Index(fields=['call_date']),
+        ]
 
     def __str__(self):
         return f"Customer #{self.customer_id} Follow-up by {self.agent} on {self.call_date}"

@@ -23,7 +23,7 @@ class ReportsEngineView(APIView):
 
     def get(self, request):
         report_type = request.query_params.get('type', 'agent_daily')
-        export_format = request.query_params.get('format', 'json') # json, csv, excel, pdf
+        export_format = request.query_params.get('export_format', 'json') # json, csv, excel, pdf
 
         # Fetch Data based on report type
         headers, data = self.generate_report_data(report_type, request)

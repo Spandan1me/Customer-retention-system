@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../api';
+import { useAuthStore } from '../../store/authStore';
 import { FollowUpLogModal } from '../../components/followups/FollowUpLogModal';
 import {
   PhoneCall,
@@ -13,12 +14,14 @@ import {
   ArrowLeft,
   DollarSign,
   Package,
-  MapPin
+  MapPin,
+  Trash2
 } from 'lucide-react';
 
 export const CustomerDetailPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [customer, setCustomer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'timeline' | 'followups' | 'recharges'>('timeline');
@@ -53,6 +56,29 @@ export const CustomerDetailPage: React.FC = () => {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const canDeleteFollowUp =
+    user?.role === 'SUPER_ADMIN' || user?.role === 'SUPERVISOR';
+
+  const handleDeleteFollowUp = async (followupId: number) => {
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this follow-up log?\\n\\nThe log will be hidden from normal history but retained in the audit database.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/followups/records/${followupId}/`);
+      await fetchCustomer360();
+      alert('Follow-up log deleted successfully.');
+    } catch (err: any) {
+      console.error(err);
+      const message =
+        err?.response?.data?.error ||
+        'Failed to delete follow-up log.';
+      alert(message);
     }
   };
 
@@ -150,7 +176,7 @@ export const CustomerDetailPage: React.FC = () => {
                 activeTab === 'followups' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              Follow-up Logs ({customer.followups?.length || 0})
+              Follow-up Logs ({customer.followup_count ?? customer.followups?.length ?? 0})
             </button>
             <button
               onClick={() => setActiveTab('recharges')}
@@ -198,6 +224,9 @@ export const CustomerDetailPage: React.FC = () => {
                     <th className="px-6 py-3">Notes</th>
                     <th className="px-4 py-3">Next Action</th>
                     <th className="px-4 py-3">Agent</th>
+                    {canDeleteFollowUp && (
+                      <th className="px-4 py-3 text-right">Action</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -208,6 +237,19 @@ export const CustomerDetailPage: React.FC = () => {
                       <td className="px-6 py-3.5 text-xs text-slate-600">{f.notes}</td>
                       <td className="px-4 py-3.5 text-xs font-semibold text-sky-700">{f.next_action}</td>
                       <td className="px-4 py-3.5 text-xs font-semibold text-slate-900">{f.agent_name}</td>
+                      {canDeleteFollowUp && (
+                        <td className="px-4 py-3.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFollowUp(f.id)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 text-xs font-bold transition"
+                            title="Delete follow-up log"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

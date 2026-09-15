@@ -2,7 +2,8 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
-from datetime import date, time
+from django.db.models import Q
+from datetime import date, time, datetime
 from .models import RetentionCategory, RetentionDisposition, CustomerFollowUp, BusinessClassification
 from .serializers import RetentionCategorySerializer, RetentionDispositionSerializer, CustomerFollowUpSerializer
 from apps.customers.models import Customer, CustomerStatus, CustomerPriority, RechargeStatus, CustomerTimeline
@@ -35,7 +36,9 @@ class CustomerFollowUpViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = CustomerFollowUp.objects.select_related('customer', 'agent', 'disposition')
+        queryset = CustomerFollowUp.objects.select_related('customer', 'agent', 'disposition').filter(
+            deleted_at__isnull=True
+        )
         customer_id = self.request.query_params.get('customer')
         if customer_id:
             queryset = queryset.filter(customer_id=customer_id)
@@ -49,6 +52,52 @@ class CustomerFollowUpViewSet(viewsets.ModelViewSet):
         else:
             return queryset.filter(customer__assigned_agent=user)
 
+    def destroy(self, request, *args, **kwargs):
+        if not (request.user.is_super_admin or request.user.is_supervisor_user):
+            return Response(
+                {'error': 'Only supervisors and super admins can delete follow-up logs.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        followup = self.get_object()
+
+        if followup.deleted_at is not None:
+            return Response(
+                {'error': 'This follow-up log has already been deleted.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        deleted_at = timezone.now()
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action="Follow-up Deleted",
+            target_model="CustomerFollowUp",
+            target_id=str(followup.id),
+            old_values={
+                'customer_id': followup.customer_id,
+                'agent_id': followup.agent_id,
+                'disposition': followup.disposition.name if followup.disposition else None,
+                'notes': followup.notes,
+                'next_action': followup.next_action,
+                'next_followup_date': str(followup.next_followup_date) if followup.next_followup_date else None,
+                'next_followup_time': str(followup.next_followup_time) if followup.next_followup_time else None,
+            },
+            new_values={
+                'deleted_at': deleted_at.isoformat(),
+                'deleted_by': request.user.id,
+            }
+        )
+
+        followup.deleted_at = deleted_at
+        followup.deleted_by = request.user
+        followup.save(update_fields=['deleted_at', 'deleted_by'])
+
+        return Response(
+            {'message': 'Follow-up log deleted successfully.'},
+            status=status.HTTP_204_NO_CONTENT,
+        )
+
     def create(self, request, *args, **kwargs):
         data = request.data
         customer_id = data.get('customer')
@@ -61,6 +110,24 @@ class CustomerFollowUpViewSet(viewsets.ModelViewSet):
         expiry_date = data.get('expiry_date')
         next_followup_date = data.get('next_followup_date')
         next_followup_time = data.get('next_followup_time')
+
+        # Next Action rules:
+        # Call Again -> date and time are mandatory
+        # No Need to Call Again -> date and time must be empty
+        if next_action == 'CALL_AGAIN':
+            if not next_followup_date or not next_followup_time:
+                return Response(
+                    {'error': 'Next follow-up date and time are required when Call Again is selected.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif next_action == 'NO_CALL_NEEDED':
+            next_followup_date = None
+            next_followup_time = None
+        else:
+            return Response(
+                {'error': 'Invalid next action. Select Call Again or No Need to Call Again.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             call_date = date.fromisoformat(call_date) if call_date else timezone.localdate()
@@ -175,10 +242,13 @@ class CustomerFollowUpViewSet(viewsets.ModelViewSet):
             else:
                 customer.churn_bucket = '0-29'
         customer.last_contact_date = timezone.now()
-        if next_followup_date:
+        if next_action == 'CALL_AGAIN':
             customer.next_followup_date = next_followup_date
-        if next_followup_time:
             customer.next_followup_time = next_followup_time
+        else:
+            # Explicitly clear any previously scheduled follow-up
+            customer.next_followup_date = None
+            customer.next_followup_time = None
         customer.latest_disposition = disposition
         customer.latest_note = notes
         customer.save()
@@ -211,15 +281,23 @@ class OverdueFollowUpView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        today = timezone.now().date()
+        now = timezone.localtime()
+        today = now.date()
+        current_time = now.time().replace(microsecond=0)
         user = request.user
+
         queryset = Customer.objects.filter(
-            next_followup_date__lt=today,
             customer_status__in=[
                 CustomerStatus.NEW, CustomerStatus.ASSIGNED, CustomerStatus.NOT_CONTACTED,
                 CustomerStatus.FOLLOWUP_PENDING, CustomerStatus.CONTACTED,
                 CustomerStatus.POSITIVE_INTENT, CustomerStatus.READY_TO_RECHARGE
             ]
+        ).filter(
+            Q(next_followup_date__lt=today)
+            | Q(
+                next_followup_date=today,
+                next_followup_time__lt=current_time
+            )
         )
 
         if user.is_super_admin:
@@ -233,6 +311,39 @@ class OverdueFollowUpView(APIView):
 
         data = []
         for c in queryset:
+            overdue_duration = 'Overdue'
+
+            if c.next_followup_date:
+                scheduled_datetime = datetime.combine(
+                    c.next_followup_date,
+                    c.next_followup_time or time.min
+                )
+                scheduled_datetime = timezone.make_aware(
+                    scheduled_datetime,
+                    timezone.get_current_timezone()
+                )
+
+                overdue_delta = now - scheduled_datetime
+                total_minutes = max(0, int(overdue_delta.total_seconds() // 60))
+
+                days = total_minutes // (24 * 60)
+                hours = (total_minutes % (24 * 60)) // 60
+                minutes = total_minutes % 60
+
+                parts = []
+
+                if days:
+                    parts.append(f'{days} day' + ('s' if days != 1 else ''))
+
+                if hours:
+                    parts.append(f'{hours} hour' + ('s' if hours != 1 else ''))
+
+                if minutes:
+                    parts.append(f'{minutes} minute' + ('s' if minutes != 1 else ''))
+
+                if parts:
+                    overdue_duration = ' '.join(parts) + ' overdue'
+
             data.append({
                 'id': c.id,
                 'customer_id': c.customer_id,
@@ -242,6 +353,7 @@ class OverdueFollowUpView(APIView):
                 'next_followup_date': c.next_followup_date,
                 'latest_disposition': c.latest_disposition.name if c.latest_disposition else 'None',
                 'days_overdue': (today - c.next_followup_date).days if c.next_followup_date else 0,
+                'overdue_duration': overdue_duration,
                 'priority': c.priority
             })
 

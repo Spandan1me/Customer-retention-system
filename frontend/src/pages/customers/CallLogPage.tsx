@@ -76,8 +76,8 @@ export const CallLogPage: React.FC = () => {
         disposition: parseInt(dispositionId, 10),
         notes,
         next_action: nextAction,
-        next_followup_date: nextDate || null,
-        next_followup_time: nextTime || null,
+        next_followup_date: nextAction === 'CALL_AGAIN' ? (nextDate || null) : null,
+        next_followup_time: nextAction === 'CALL_AGAIN' ? (nextTime || null) : null,
       });
       navigate(`/customers/${customer.id}`);
     } catch (err: any) {
@@ -150,16 +150,46 @@ export const CallLogPage: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Next Action
-            <select value={nextAction} onChange={(event) => setNextAction(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm">
-              <option value="CALL_AGAIN">Call Again</option><option value="VERIFY_RECHARGE">Verify Recharge</option><option value="ESCALATE_SERVICE">Escalate Service</option><option value="SEND_OFFER">Send Offer</option><option value="CONTACT_DEALER">Contact Dealer</option><option value="CLOSE_LOST">Close as Lost</option>
+            <select
+              value={nextAction}
+              onChange={(event) => {
+                const value = event.target.value;
+                setNextAction(value);
+                if (value === 'NO_CALL_NEEDED') {
+                  setNextDate('');
+                  setNextTime('');
+                }
+              }}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+            >
+              <option value="CALL_AGAIN">Call Again</option>
+              <option value="NO_CALL_NEEDED">No Need to Call Again</option>
             </select>
           </label>
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Next Callback Date
-            <input type="date" value={nextDate} onChange={(event) => setNextDate(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" />
-          </label>
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Next Callback Time
-            <input type="time" value={nextTime} onChange={(event) => setNextTime(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" />
-          </label>
+
+          {nextAction === 'CALL_AGAIN' && (
+            <>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Next Follow-up Date
+                <input
+                  type="date"
+                  required
+                  value={nextDate}
+                  onChange={(event) => setNextDate(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                />
+              </label>
+
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Next Follow-up Time
+                <input
+                  type="time"
+                  required
+                  value={nextTime}
+                  onChange={(event) => setNextTime(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                />
+              </label>
+            </>
+          )}
         </div>
 
         {error && <p className="text-sm font-semibold text-rose-600">{error}</p>}

@@ -10,7 +10,7 @@ export const ReportsPage: React.FC = () => {
   const fetchReport = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/reports/export/', { params: { type: reportType, format: 'json' } });
+      const res = await api.get('/reports/export/', { params: { type: reportType, export_format: 'json' } });
       setReportData(res.data);
     } catch (err) {
       console.error(err);
@@ -22,7 +22,7 @@ export const ReportsPage: React.FC = () => {
   const handleExport = async (fmt: string) => {
     try {
       const response = await api.get('/reports/export/', {
-        params: { type: reportType, format: fmt },
+        params: { type: reportType, export_format: fmt },
         responseType: 'blob',
       });
       const fileUrl = URL.createObjectURL(response.data);

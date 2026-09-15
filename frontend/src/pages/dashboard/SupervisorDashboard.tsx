@@ -27,7 +27,7 @@ export const SupervisorDashboard: React.FC = () => {
 
   const exportAgentReport = async () => {
     const response = await api.get('/reports/export/', {
-      params: { type: 'agent_daily', format: 'csv', ...(selectedAgentId ? { agent_id: selectedAgentId } : {}) },
+      params: { type: 'agent_daily', export_format: 'csv', ...(selectedAgentId ? { agent_id: selectedAgentId } : {}) },
       responseType: 'blob',
     });
     const url = URL.createObjectURL(response.data);

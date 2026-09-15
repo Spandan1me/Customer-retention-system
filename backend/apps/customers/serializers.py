@@ -42,7 +42,8 @@ class CustomerDetailSerializer(serializers.ModelSerializer):
     assigned_team_lead_name = serializers.SerializerMethodField()
     assigned_supervisor_name = serializers.SerializerMethodField()
     latest_disposition_name = serializers.SerializerMethodField()
-    followups = CustomerFollowUpSerializer(many=True, read_only=True)
+    followups = serializers.SerializerMethodField()
+    followup_count = serializers.SerializerMethodField()
     recharges = RechargeMiniSerializer(many=True, read_only=True)
     timeline = CustomerTimelineSerializer(many=True, read_only=True)
     remarks = serializers.SerializerMethodField()
@@ -50,6 +51,21 @@ class CustomerDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = '__all__'
+
+    def get_followups(self, obj):
+        followups = obj.followups.filter(
+            deleted_at__isnull=True
+        ).select_related(
+            'customer', 'agent', 'disposition'
+        ).order_by('-created_at')[:20]
+        return CustomerFollowUpSerializer(
+            followups,
+            many=True,
+            context=self.context
+        ).data
+
+    def get_followup_count(self, obj):
+        return obj.followups.filter(deleted_at__isnull=True).count()
 
     def get_remarks(self, obj):
         return [{
